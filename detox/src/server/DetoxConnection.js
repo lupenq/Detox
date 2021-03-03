@@ -78,7 +78,7 @@ class DetoxConnection {
         this._handler.onError(handlerError, action);
       }
     } catch (error) {
-      this._log.warn({ ...EVENTS.ERROR, err: error }, `${error}`);
+      this._log.warn({ ...EVENTS.ERROR }, error instanceof DetoxRuntimeError ? error.message : `${error}`);
     }
   }
 

@@ -1,6 +1,7 @@
 const _ = require('lodash');
 const WebSocket = require('ws');
 const log = require('../utils/logger').child({ __filename, class: 'AsyncWebSocket' });
+const DetoxRuntimeError = require('../errors/DetoxRuntimeError');
 
 const EVENTS = {
   OPEN: Object.freeze({ event: 'OPEN' }),
@@ -27,13 +28,18 @@ class AsyncWebSocket {
         resolve(response);
       };
 
-      this.ws.onerror = (err) => {
-        this.log.error({ ...EVENTS.ERROR, err }, `caught error: ${err}`);
+      this.ws.onerror = (errorEvent) => {
+        const error = new DetoxRuntimeError({
+          message: 'Failed to open a connection to the Detox server.',
+          debugInfo: errorEvent.error,
+        });
+
+        delete error.stack;
 
         if (_.size(this.inFlightPromises) === 0) {
-          reject(err); // TODO: check when actually this can happen ??
+          reject(error); // can happen on open attempt
         } else {
-          this.rejectAll(err);
+          this.rejectAll(error);
         }
       };
 

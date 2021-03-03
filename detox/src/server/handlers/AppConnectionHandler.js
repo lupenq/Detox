@@ -11,6 +11,9 @@ class AppConnectionHandler extends RegisteredConnectionHandler {
       throw new DetoxRuntimeError({
         message: 'Cannot forward the message to the Detox client.',
         debugInfo: action,
+        inspectOptions: {
+          depth: 3,
+        }
       });
     }
 
