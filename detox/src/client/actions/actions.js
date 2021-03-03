@@ -1,14 +1,13 @@
 const _ = require('lodash');
 const logger = require('../../utils/logger');
 const log = logger.child({ __filename });
-const bunyan = require('bunyan');
 const DetoxRuntimeError = require('../../errors/DetoxRuntimeError');
 
 class Action {
   constructor(type, params = {}) {
     this.type = type;
     this.params = params;
-    this.messageId;
+    this.messageId = undefined;
   }
 
   expectResponseOfType(response, type) {
@@ -161,8 +160,7 @@ class CurrentStatus extends Action {
 
   async handle(response) {
     this.expectResponseOfType(response, 'currentStatusResult');
-    log.info({ class: 'CurrentStatus' }, response.params.status);
-    return response;
+    return response.params.status;
   }
 }
 
@@ -173,29 +171,6 @@ class SetInstrumentsRecordingState extends Action {
 
   async handle(response) {
     this.expectResponseOfType(response, 'setRecordingStateDone');
-  }
-}
-
-class AppWillTerminateWithError extends Action {
-  constructor() {
-    super('AppWillTerminateWithError');
-    this.messageId = -10000;
-  }
-
-  handle(response) {
-    this.expectResponseOfType(response, 'AppWillTerminateWithError');
-    return response.params.errorDetails;
-  }
-}
-
-class AppNonresponsive extends Action {
-  constructor() {
-    super('AppNonresponsiveDetected');
-    this.messageId = -10001;
-  }
-
-  handle(response) {
-    this.expectResponseOfType(response, 'AppNonresponsiveDetected');
   }
 }
 
@@ -233,7 +208,5 @@ module.exports = {
   Shake,
   SetOrientation,
   SetInstrumentsRecordingState,
-  AppWillTerminateWithError,
-  AppNonresponsive,
   CaptureViewHierarchy,
 };

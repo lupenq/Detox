@@ -16,7 +16,8 @@ describe('SimulatorInstrumentsPlugin', () => {
     };
     const mockedClient = {
       isConnected: true,
-      pandingAppCrash: false
+      pandingAppCrash: false,
+      startInstrumentsRecording: jest.fn(),
     };
     pluginConfig = {
       api: {
