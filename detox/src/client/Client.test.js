@@ -466,3 +466,20 @@ describe('Client', () => {
     messageId: -10000
   });
 });
+// describe('and it gets unresponsiveness', () => {
+//   let THREAD_DUMP = 'Simulated non-responsiveness';
+//
+//   beforeEach(init);
+//
+//   beforeEach(() => {
+//     const listener = client().setNonresponsivenessListener.mock.calls[0][0];
+//     listener({ threadDump: THREAD_DUMP });
+//   });
+//
+//   it('should log a warning', () =>
+//     expect(logger.warn).toHaveBeenCalledWith(
+//       { event: 'APP_NONRESPONSIVE' },
+//       expect.stringContaining(THREAD_DUMP)
+//     ));
+// });
+//
