@@ -3,6 +3,10 @@ const DetoxSessionManager = require('./DetoxSessionManager');
 const log = require('../utils/logger').child({ __filename });
 
 class DetoxServer {
+  /**
+   * @param {number} options.port
+   * @param {boolean} options.standalone
+   */
   constructor(options) {
     this._onConnection = this._onConnection.bind(this);
 
@@ -13,7 +17,9 @@ class DetoxServer {
 
   async open() {
     await this._startListening();
-    log.debug(`Detox server listening on localhost:${this._wss.options.port}...`);
+
+    const level = this._options.standalone ? 'info' : 'debug';
+    log[level](`Detox server listening on localhost:${this._wss.options.port}...`);
   }
 
   async close() {

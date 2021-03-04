@@ -140,7 +140,9 @@ class Detox {
     if (this._sessionConfig.autoStart) {
       this._server = new DetoxServer({
         port: new URL(sessionConfig.server).port,
+        standalone: false,
       });
+
       await this._server.open();
     }
 
