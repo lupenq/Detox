@@ -99,9 +99,7 @@ class Cleanup extends Action {
   }
 
   async handle(response) {
-    if (response.type !== 'appDisconnected') {
-      this.expectResponseOfType('cleanupDone');
-    }
+    this.expectResponseOfType(response, 'cleanupDone');
   }
 }
 

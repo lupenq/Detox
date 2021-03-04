@@ -40,28 +40,113 @@ class Client {
     this.setEventCallback('error', this._onUnhandledServerError);
   }
 
+  /**
+   * Tells whether the DetoxManager (from native side) is connected to Detox server.
+   * In other words, if we can communicate with the app and send actions to it.
+   *
+   * @returns {boolean}
+   */
   get isConnected() {
     return this._asyncWebSocket.isOpen && this._whenAppIsConnected.isResolved();
   }
 
   async connect() {
     await this._asyncWebSocket.open();
-    await this.sendAction(new actions.Login(this._sessionId));
+    await this._doSendAction(new actions.Login(this._sessionId));
   }
 
   async cleanup() {
     clearTimeout(this._slowInvocationStatusHandle);
 
     if (this.isConnected && !this._pendingAppCrash) {
-      if (this._asyncWebSocket.isOpen) {
-        await this.sendAction(new actions.Cleanup(this._successfulTestRun));
-      }
+      await this.sendAction(new actions.Cleanup(this._successfulTestRun));
 
       this._whenAppIsConnected = new Deferred();
+      this._whenAppIsReady = new Deferred();
     }
 
     if (this._asyncWebSocket.isOpen) {
       await this._asyncWebSocket.close();
+    }
+  }
+
+  setEventCallback(event, callback) {
+    this._asyncWebSocket.setEventCallback(event, callback);
+  }
+
+  getPendingCrashAndReset() {
+    const crash = this._pendingAppCrash;
+    this._pendingAppCrash = undefined;
+
+    return crash;
+  }
+
+  dumpPendingRequests({testName} = {}) {
+    const messages = _.values(this._asyncWebSocket.inFlightPromises)
+      .map(p => p.message)
+      .filter(m => m.type !== 'currentStatus');
+
+    if (_.isEmpty(messages)) {
+      return;
+    }
+
+    let dump = 'App has not responded to the network requests below:';
+    for (const msg of messages) {
+      dump += `\n  (id = ${msg.messageId}) ${msg.type}: ${JSON.stringify(msg.params)}`;
+    }
+
+    const notice = testName
+      ? `That might be the reason why the test "${testName}" has timed out.`
+      : `Unresponded network requests might result in timeout errors in Detox tests.`;
+
+    dump += `\n\n${notice}\n`;
+
+    log.warn({ event: 'PENDING_REQUESTS'}, dump);
+    this._asyncWebSocket.resetInFlightPromises();
+  }
+
+  async execute(invocation) {
+    if (typeof invocation === 'function') {
+      invocation = invocation();
+    }
+
+    try {
+      return await this.sendAction(new actions.Invoke(invocation));
+    } catch (err) {
+      this._successfulTestRun = false;
+      throw err;
+    }
+  }
+
+  /**
+   * Sends an action with the current status mechanism enabled
+   * @protected
+   */
+  async sendAction(action) {
+    try {
+      if (this._slowInvocationTimeout > 0) {
+        this._slowInvocationStatusHandle = this._scheduleSlowInvocationQuery();
+      }
+
+      return await this._doSendAction(action);
+    } finally {
+      clearTimeout(this._slowInvocationStatusHandle);
+    }
+  }
+
+  async _doSendAction(action) {
+    const errorWithUserStack = createErrorWithUserStack();
+
+    try {
+      const response = await this._asyncWebSocket.send(action, action.messageId);
+      const parsedResponse = JSON.parse(response);
+      if (parsedResponse && parsedResponse.type === 'error') {
+        throw deserializeError(parsedResponse.params.error);
+      }
+
+      return await action.handle(parsedResponse);
+    } catch (err) {
+      throw replaceErrorStack(errorWithUserStack, asError(err));
     }
   }
 
@@ -97,7 +182,7 @@ class Client {
   }
 
   async currentStatus() {
-    return await this.sendAction(new actions.CurrentStatus());
+    return await this._doSendAction(new actions.CurrentStatus());
   }
 
   async setSyncSettings(params) {
@@ -126,96 +211,14 @@ class Client {
     await this.sendAction(new actions.DeliverPayload(params));
   }
 
-  async execute(invocation) {
-    if (typeof invocation === 'function') {
-      invocation = invocation();
-    }
-
-    try {
-      return await this.sendAction(new actions.Invoke(invocation));
-    } catch (err) {
-      this._successfulTestRun = false;
-      throw err;
-    }
-  }
-
-  getPendingCrashAndReset() {
-    const crash = this._pendingAppCrash;
-    this._pendingAppCrash = undefined;
-
-    return crash;
-  }
-
-  /**
-   * @protected
-   */
-  async sendAction(action) {
-    const errorWithUserStack = createErrorWithUserStack();
-
-    try {
-      return await this._doSendAction(action);
-    } catch (err) {
-      throw replaceErrorStack(errorWithUserStack, asError(err));
-    }
-  }
-
-  async _doSendAction(action) {
-    let handledResponse;
-
-    if (this._slowInvocationTimeout && action.type !== 'login' && action.type !== 'currentStatus') {
-      this._slowInvocationStatusHandle = this._scheduleSlowInvocationQuery();
-    }
-
-    try {
-      const response = await this._asyncWebSocket.send(action, action.messageId);
-      const parsedResponse = JSON.parse(response);
-      if (parsedResponse && parsedResponse.type === 'error') {
-        throw deserializeError(parsedResponse.params.error);
-      }
-
-      handledResponse = await action.handle(parsedResponse);
-    } finally {
-      clearTimeout(this._slowInvocationStatusHandle);
-    }
-
-    return handledResponse;
-  }
-
-  setEventCallback(event, callback) {
-    this._asyncWebSocket.setEventCallback(event, callback);
-  }
-
   _scheduleSlowInvocationQuery() {
     return setTimeout(async () => {
       if (this.isConnected) {
-        log.info({ event: 'CurrentStatus' }, await this.currentStatus());
+        const status = await this.currentStatus();
+        log.info({ event: 'CurrentStatus' }, status);
         this._slowInvocationStatusHandle = this._scheduleSlowInvocationQuery();
       }
     }, this._slowInvocationTimeout);
-  }
-
-  dumpPendingRequests({testName} = {}) {
-    const messages = _.values(this._asyncWebSocket.inFlightPromises)
-      .map(p => p.message)
-      .filter(m => m.type !== 'currentStatus');
-
-    if (_.isEmpty(messages)) {
-      return;
-    }
-
-    let dump = 'App has not responded to the network requests below:';
-    for (const msg of messages) {
-      dump += `\n  (id = ${msg.messageId}) ${msg.type}: ${JSON.stringify(msg.params)}`;
-    }
-
-    const notice = testName
-      ? `That might be the reason why the test "${testName}" has timed out.`
-      : `Unresponded network requests might result in timeout errors in Detox tests.`;
-
-    dump += `\n\n${notice}\n`;
-
-    log.warn({ event: 'PENDING_REQUESTS'}, dump);
-    this._asyncWebSocket.resetInFlightPromises();
   }
 
   _onAppConnected() {

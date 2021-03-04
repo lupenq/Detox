@@ -1,3 +1,4 @@
+const DetoxInvariantError = require('../../errors/DetoxInvariantError');
 const { serializeError } = require('serialize-error');
 
 class RegisteredConnectionHandler {
@@ -9,8 +10,18 @@ class RegisteredConnectionHandler {
       role,
     });
 
+    this._role = role;
     /** @type {DetoxSession} */
     this._session = session;
+  }
+
+  handle(action) {
+    switch (action.type) {
+      case 'login':
+        throw new DetoxInvariantError(`Cannot log in twice into the same session (${this._session.id}) as ${this._role}`);
+      default:
+        return false;
+    }
   }
 
   onError(error, action) {

@@ -7,17 +7,22 @@ class AppConnectionHandler extends RegisteredConnectionHandler {
   }
 
   handle(action) {
-    if (!this._session.tester) {
-      throw new DetoxRuntimeError({
-        message: 'Cannot forward the message to the Detox client.',
-        debugInfo: action,
-        inspectOptions: {
-          depth: 3,
-        }
-      });
+    if (super.handle(action)) {
+      return true;
     }
 
-    this._session.tester.sendAction(action);
+    if (this._session.tester) {
+      this._session.tester.sendAction(action);
+      return true;
+    }
+
+    throw new DetoxRuntimeError({
+      message: 'Cannot forward the message to the Detox client.',
+      debugInfo: action,
+      inspectOptions: {
+        depth: 3,
+      },
+    });
   }
 }
 
