@@ -39,7 +39,7 @@ class Client {
   }
 
   get isConnected() {
-    return this._whenConnected.isResolved();
+    return this.ws.isOpen() && this._whenConnected.isResolved();
   }
 
   async connect() {

@@ -6,6 +6,7 @@ class DetoxRuntimeError extends Error {
     message = '',
     hint = '',
     debugInfo = '',
+    noStack = false,
     inspectOptions,
   } = {}) {
     const formattedMessage = _.compact([
@@ -18,6 +19,10 @@ class DetoxRuntimeError extends Error {
 
     super(formattedMessage);
     this.name = 'DetoxRuntimeError';
+
+    if (noStack) {
+      delete this.stack;
+    }
   }
 
   static inspectObj(obj, options) {

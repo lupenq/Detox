@@ -1,0 +1,16 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`AsyncWebSocket new AsyncWebSocket - websocket onError should reject 1`] = `
+"Failed to open a connection to the Detox server.
+
+Error: Inner error
+    at Object.it (/Users/yaroslavs/Projects/wix/Detox/detox/src/client/AsyncWebSocket.test.js:29:33)
+    at Object.asyncJestTest (/Users/yaroslavs/Projects/wix/Detox/detox/node_modules/jest-jasmine2/build/jasmineAsyncInstall.js:106:37)
+    at resolve (/Users/yaroslavs/Projects/wix/Detox/detox/node_modules/jest-jasmine2/build/queueRunner.js:45:12)
+    at new Promise (<anonymous>)
+    at mapper (/Users/yaroslavs/Projects/wix/Detox/detox/node_modules/jest-jasmine2/build/queueRunner.js:28:19)
+    at promise.then (/Users/yaroslavs/Projects/wix/Detox/detox/node_modules/jest-jasmine2/build/queueRunner.js:75:41)
+    at process._tickCallback (internal/process/next_tick.js:68:7)"
+`;
+
+exports[`AsyncWebSocket send message should reject upon error if there's only one message in flight 1`] = `"Inner Error"`;

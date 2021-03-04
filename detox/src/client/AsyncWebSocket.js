@@ -12,39 +12,44 @@ const EVENTS = {
 
 class AsyncWebSocket {
   constructor(url) {
-    this.log = log.child({ url });
-    this.url = url;
-    this.ws = undefined;
+    this._log = log.child({ url });
+    this._url = url;
+    this._ws = undefined;
     this.inFlightPromises = {};
-    this.eventCallbacks = {};
-    this.messageIdCounter = 0;
+    this._eventCallbacks = {};
+    this._messageIdCounter = 0;
   }
 
   async open() {
-    return new Promise(async(resolve, reject) => {
-      this.ws = new WebSocket(this.url);
-      this.ws.onopen = (response) => {
-        this.log.trace(EVENTS.OPEN, `opened web socket to: ${this.url}`);
+    let isOpening = true;
+
+    return new Promise((resolve, reject) => {
+      this._ws = new WebSocket(this._url);
+
+      this._ws.onopen = (response) => {
+        this._log.trace(EVENTS.OPEN, `opened web socket to: ${this._url}`);
+        isOpening = false;
         resolve(response);
       };
 
-      this.ws.onerror = (errorEvent) => {
-        const error = new DetoxRuntimeError({
-          message: 'Failed to open a connection to the Detox server.',
-          debugInfo: errorEvent.error,
-        });
+      this._ws.onerror = (errorEvent) => {
+        if (isOpening) {
+          const error = new DetoxRuntimeError({
+            message: 'Failed to open a connection to the Detox server.',
+            debugInfo: errorEvent.error,
+            noStack: true,
+          });
 
-        delete error.stack;
-
-        if (_.size(this.inFlightPromises) === 0) {
-          reject(error); // can happen on open attempt
+          reject(error);
+        } else if (_.size(this.inFlightPromises) > 0) {
+          this.rejectAll(errorEvent.error);
         } else {
-          this.rejectAll(error);
+          log.error(EVENTS.ERROR, '%s', errorEvent.error);
         }
       };
 
-      this.ws.onmessage = (response) => {
-        this.log.trace(EVENTS.MESSAGE, response.data);
+      this._ws.onmessage = (response) => {
+        this._log.trace(EVENTS.MESSAGE, response.data);
 
         const data = JSON.parse(response.data);
         const pendingPromise = this.inFlightPromises[data.messageId];
@@ -52,7 +57,7 @@ class AsyncWebSocket {
           pendingPromise.resolve(response.data);
           delete this.inFlightPromises[data.messageId];
         } else {
-          const eventCallbacks = this.eventCallbacks[data.type];
+          const eventCallbacks = this._eventCallbacks[data.type];
           if (!_.isEmpty(eventCallbacks)) {
             for (const callback of eventCallbacks) {
               callback(data);
@@ -63,40 +68,18 @@ class AsyncWebSocket {
     });
   }
 
-  async send(message, messageId) {
-    if (!this.ws) {
-      throw new Error(`Can't send a message on a closed websocket, init the by calling 'open()'. Message:  ${JSON.stringify(message)}`);
-    }
-
-    return new Promise(async(resolve, reject) => {
-      message.messageId = messageId || this.messageIdCounter++;
-      this.inFlightPromises[message.messageId] = {message, resolve, reject};
-      const messageAsString = JSON.stringify(message);
-      this.log.trace(EVENTS.SEND, messageAsString);
-      this.ws.send(messageAsString);
-    });
-  }
-
-  setEventCallback(event, callback) {
-    if (_.isEmpty(this.eventCallbacks[event])) {
-      this.eventCallbacks[event] = [callback];
-    } else {
-      this.eventCallbacks[event].push(callback);
-    }
-  }
-
   async close() {
     return new Promise((resolve, reject) => {
-      if (this.ws) {
-        this.ws.onclose = (message) => {
-          this.ws = null;
+      if (this._ws) {
+        this._ws.onclose = (message) => {
+          this._ws = null;
           resolve(message);
         };
 
-        if (this.ws.readyState !== WebSocket.CLOSED) {
-          this.ws.close();
+        if (this._ws.readyState !== WebSocket.CLOSED) {
+          this._ws.close();
         } else {
-          this.ws.onclose();
+          this._ws.onclose();
         }
       } else {
         reject(new Error(`websocket is closed, init the by calling 'open()'`));
@@ -104,11 +87,34 @@ class AsyncWebSocket {
     });
   }
 
+  async send(message, messageId) {
+    if (!this._ws) {
+      throw new Error(`Can't send a message on a closed websocket, init the by calling 'open()'. Message:  ${JSON.stringify(message)}`);
+    }
+
+    return new Promise((resolve, reject) => {
+      message.messageId = messageId || this._messageIdCounter++;
+      this.inFlightPromises[message.messageId] = {message, resolve, reject};
+      const messageAsString = JSON.stringify(message);
+      this._log.trace(EVENTS.SEND, messageAsString);
+      this._ws.send(messageAsString);
+    });
+  }
+
   isOpen() {
-    if (!this.ws) {
+    if (!this._ws) {
       return false;
     }
-    return this.ws.readyState === WebSocket.OPEN;
+
+    return this._ws.readyState === WebSocket.OPEN;
+  }
+
+  setEventCallback(event, callback) {
+    if (_.isEmpty(this._eventCallbacks[event])) {
+      this._eventCallbacks[event] = [callback];
+    } else {
+      this._eventCallbacks[event].push(callback);
+    }
   }
 
   resetInFlightPromises() {

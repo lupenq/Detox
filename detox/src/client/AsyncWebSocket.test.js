@@ -19,28 +19,19 @@ describe('AsyncWebSocket', () => {
   it(`new AsyncWebSocket - websocket onOpen should resolve`, async () => {
     const response = generateResponse('onmessage', 0);
     const promise = client.open();
-    client.ws.onopen(response);
+    client._ws.onopen(response);
     expect(await promise).toEqual(response);
   });
 
   it(`new AsyncWebSocket - websocket onError should reject`, async () => {
-    const error = new Error();
     const promise = client.open();
 
-    try {
-      client.ws.onerror(error);
-      await promise;
-    } catch (ex) {
-      expect(ex).toEqual(error);
-    }
+    client._ws.onerror({ error: new Error('Inner error') });
+    await expect(promise).rejects.toThrowErrorMatchingSnapshot();
   });
 
   it(`send message on a closed connection should throw`, async () => {
-    try {
-      await client.send(generateRequest());
-    } catch (ex) {
-      expect(ex).toBeDefined();
-    }
+    await expect(client.send(generateRequest())).rejects.toThrowError();
   });
 
   it(`message should have subsequent messageIds`, async () => {
@@ -52,12 +43,12 @@ describe('AsyncWebSocket', () => {
 
     const first = client.send(request);
     expect(request.messageId).toEqual(0);
-    client.ws.onmessage(firstResponse);
+    client._ws.onmessage(firstResponse);
     expect(await first).toEqual(firstResponse.data);
 
     const second = client.send(request);
     expect(request.messageId).toEqual(1);
-    client.ws.onmessage(secondResponse);
+    client._ws.onmessage(secondResponse);
     expect(await second).toEqual(secondResponse.data);
 });
 
@@ -74,8 +65,8 @@ describe('AsyncWebSocket', () => {
     const second = client.send(request);
     expect(request.messageId).toEqual(1);
 
-    client.ws.onmessage(secondResponse);
-    client.ws.onmessage(firstResponse);
+    client._ws.onmessage(secondResponse);
+    client._ws.onmessage(firstResponse);
 
     expect(await second).toEqual(secondResponse.data);
     expect(await first).toEqual(firstResponse.data);
@@ -86,7 +77,7 @@ describe('AsyncWebSocket', () => {
 
     const initialInflightPromisesSize = _.size(client.inFlightPromises);
     const response = generateResponse('onmessage', 123);
-    client.ws.onmessage(response);
+    client._ws.onmessage(response);
 
     const finalInflightPromisesSize = _.size(client.inFlightPromises);
     expect(initialInflightPromisesSize).toEqual(finalInflightPromisesSize);
@@ -97,62 +88,56 @@ describe('AsyncWebSocket', () => {
     const response = generateResponse('onmessage', 0);
 
     const promise = client.send(generateRequest());
-    client.ws.onmessage(response);
+    client._ws.onmessage(response);
     expect(await promise).toEqual(response.data);
   });
 
   it(`send message should reject upon error if there's only one message in flight`, async () => {
     await connect(client);
-    const error = new Error();
-    const message = client.send(generateRequest());
-    client.ws.onerror(error);
-    try {
-      await message;
-    } catch (ex) {
-      expect(ex).toEqual(error);
-    }
+    const error = new Error('Inner Error');
+    const sendPromise = client.send(generateRequest());
+    client._ws.onerror({ error });
+    await expect(sendPromise).rejects.toThrowErrorMatchingSnapshot();
   });
 
   it(`send message should throw upon error if there's more than one message in flight`, async () => {
     await connect(client);
-    const error = new Error();
+    const error = new Error('Inner error');
     const message1 = client.send(generateRequest());
     const message2 = client.send(generateRequest());
 
-    try {
-      client.ws.onerror(error);
-    } catch (ex) {
-      expect(ex).toEqual(error);
-    }
+    client._ws.onerror({ error });
+    await expect(message1).rejects.toThrowError(error);
+    await expect(message2).rejects.toThrowError(error);
   });
 
   it(`close a connected websocket should close and resolve`, async () => {
     await connect(client);
     const promise = client.close();
-    client.ws.onclose({});
+    client._ws.onclose({});
     expect(await promise).toEqual({});
   });
 
   it(`close a connected websocket should close and resolve`, async () => {
     const result = {};
     await connect(client);
-    client.ws.readyState = WebSocket.OPEN;
+    client._ws.readyState = WebSocket.OPEN;
     const promise = client.close();
-    client.ws.onclose(result);
+    client._ws.onclose(result);
     expect(await promise).toEqual(result);
   });
 
   it(`close a disconnected websocket should resolve`, async () => {
     await connect(client);
-    client.ws.readyState = WebSocket.CLOSED;
+    client._ws.readyState = WebSocket.CLOSED;
     await client.close();
-    expect(client.ws).toBeNull();
+    expect(client._ws).toBeNull();
   });
 
   it(`client.isOpen() should return false when closed, open when opened`, async () => {
     expect(client.isOpen()).toBe(false);
     await connect(client);
-    client.ws.readyState = WebSocket.OPEN;
+    client._ws.readyState = WebSocket.OPEN;
     expect(client.isOpen()).toBe(true);
   });
 
@@ -171,7 +156,7 @@ describe('AsyncWebSocket', () => {
     await connect(client);
     client.setEventCallback('someEvent', mockCallback);
 
-    client.ws.onmessage(mockedResponse);
+    client._ws.onmessage(mockedResponse);
     expect(mockCallback).toHaveBeenCalledWith(JSON.parse(mockedResponse.data));
   });
 
@@ -184,7 +169,7 @@ describe('AsyncWebSocket', () => {
     client.setEventCallback('someEvent', mockCallbacks[0]);
     client.setEventCallback('someEvent', mockCallbacks[1]);
 
-    client.ws.onmessage(mockedResponse);
+    client._ws.onmessage(mockedResponse);
 
     expect(mockCallbacks[0]).toHaveBeenCalledWith(mockResponseData);
     expect(mockCallbacks[1]).toHaveBeenCalledWith(mockResponseData);
@@ -214,7 +199,7 @@ describe('AsyncWebSocket', () => {
   async function connect(client) {
     const result = {};
     const promise = client.open();
-    client.ws.onopen(result);
+    client._ws.onopen(result);
     await promise;
   }
 
