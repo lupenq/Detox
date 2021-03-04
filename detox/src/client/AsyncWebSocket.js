@@ -101,7 +101,7 @@ class AsyncWebSocket {
     });
   }
 
-  isOpen() {
+  get isOpen() {
     if (!this._ws) {
       return false;
     }

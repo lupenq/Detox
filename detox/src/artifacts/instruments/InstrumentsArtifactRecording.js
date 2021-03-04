@@ -35,7 +35,7 @@ class InstrumentsArtifactRecording extends Artifact {
   }
 
   _isClientConnected() {
-    return Boolean(this._client.isConnected && !this._client.pandingAppCrash);
+    return this._client.isConnected;
   }
 }
 

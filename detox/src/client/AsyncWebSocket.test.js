@@ -134,11 +134,11 @@ describe('AsyncWebSocket', () => {
     expect(client._ws).toBeNull();
   });
 
-  it(`client.isOpen() should return false when closed, open when opened`, async () => {
-    expect(client.isOpen()).toBe(false);
+  it(`client.isOpen should return false when closed, open when opened`, async () => {
+    expect(client.isOpen).toBe(false);
     await connect(client);
     client._ws.readyState = WebSocket.OPEN;
-    expect(client.isOpen()).toBe(true);
+    expect(client.isOpen).toBe(true);
   });
 
   it(`closing a non-initialized websocket should throw`, async () => {

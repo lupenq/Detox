@@ -1,3 +1,4 @@
+const permaproxy = require('funpermaproxy');
 const tempfile = require('tempfile');
 const actions = require('./actions/actions');
 const invoke = require('../invoke');
@@ -5,84 +6,84 @@ const sleep = require('../utils/sleep');
 const { validSession } = require('../configuration/configurations.mock');
 
 describe('Client', () => {
-  let WebSocket;
+  let AsyncWebSocket;
   let Client;
   let client;
   let bunyan;
   let log;
   let sessionConfig;
+  /** @type {AsyncWebSocket} */
+  let aws;
 
   beforeEach(() => {
     sessionConfig = { ...validSession };
 
-    jest.mock('../utils/logger');
-    WebSocket = jest.mock('./AsyncWebSocket');
-
     jest.mock('bunyan')
     bunyan = require('bunyan');
 
-    Client = require('./Client');
+    jest.mock('../utils/logger');
     log = require('../utils/logger');
     log.getDetoxLevel = () => 'debug';
+
+    jest.mock('./AsyncWebSocket');
+    AsyncWebSocket = require('./AsyncWebSocket');
+
+    Client = require('./Client');
+    aws = permaproxy(() => AsyncWebSocket.mock.instances[0]);
   });
 
   it(`reloadReactNative() - should receive ready from device and resolve`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("ready", {}, 1));
+    aws.send.mockReturnValueOnce(response("ready", {}, 1));
     await client.reloadReactNative();
   });
 
   it(`reloadReactNative() - should throw if receives wrong response from device`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("somethingElse", {}, 1));
-    try {
-      await client.reloadReactNative();
-
-    } catch (ex) {
-      expect(ex).toBeDefined();
-    }
+    aws.send.mockReturnValueOnce(response("somethingElse", {}, 1));
+    await expect(client.reloadReactNative()).rejects.toThrowError();
   });
 
   it(`deliverPayload() - should send an 'deliverPayload' action and resolve when 'deliverPayloadDone' returns`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("deliverPayloadDone", {}, 1));
+    aws.send.mockReturnValueOnce(response("deliverPayloadDone", {}, 1));
     await client.deliverPayload({url: 'url'});
 
-    expect(client.ws.send).toHaveBeenCalledTimes(2);
+    expect(aws.send).toHaveBeenCalledTimes(2);
   });
 
   it(`setSyncSettings() - should send a 'setSyncSettings' action and resolve when 'setSyncSettingsDone' returns`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("setSyncSettingsDone", {}, 1));
+    aws.send.mockReturnValueOnce(response("setSyncSettingsDone", {}, 1));
     await client.setSyncSettings({test:test});
 
-    expect(client.ws.send).toHaveBeenCalledTimes(2);
+    expect(aws.send).toHaveBeenCalledTimes(2);
   });
 
   it(`shake() - should send a 'shake' action and resolve when 'shakeDeviceDone' returns`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("shakeDeviceDone", {}, 1));
+    aws.send.mockReturnValueOnce(response("shakeDeviceDone", {}, 1));
     await client.shake();
 
-    expect(client.ws.send).toHaveBeenCalledTimes(2);
+    expect(aws.send).toHaveBeenCalledTimes(2);
   });
 
   it(`setOrientation() - should send a 'setOrientation' action and resolve when 'setOrientationDone' returns`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("setOrientationDone", {}, 1));
+    aws.send.mockReturnValueOnce(response("setOrientationDone", {}, 1));
     await client.setOrientation('portrait');
 
-    expect(client.ws.send).toHaveBeenCalledTimes(2);
+    expect(aws.send).toHaveBeenCalledTimes(2);
   });
 
   it(`startInstrumentsRecording() - should send a 'setRecordingState' action and resolve when 'setRecordingStateDone' returns`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("setRecordingStateDone", {}, 1));
+    aws.send.mockReturnValueOnce(response("setRecordingStateDone", {}, 1));
 
     const recordingPath = tempfile('.dtxrec');
     await client.startInstrumentsRecording({ recordingPath });
 
-    expect(client.ws.send).toHaveBeenCalledWith(expect.objectContaining({
+    expect(aws.send).toHaveBeenCalledWith(expect.objectContaining({
       type: 'setRecordingState',
       params: expect.objectContaining({ recordingPath }),
     }), undefined);
@@ -90,11 +91,11 @@ describe('Client', () => {
 
   it(`stopInstrumentsRecording() - should send an empty 'setRecordingState' action and resolve when 'setRecordingStateDone' returns`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("setRecordingStateDone", {}, 1));
+    aws.send.mockReturnValueOnce(response("setRecordingStateDone", {}, 1));
 
     await client.stopInstrumentsRecording();
 
-    expect(client.ws.send).toHaveBeenCalledWith(expect.objectContaining({
+    expect(aws.send).toHaveBeenCalledWith(expect.objectContaining({
       type: 'setRecordingState',
       params: {}
     }), undefined);
@@ -102,12 +103,12 @@ describe('Client', () => {
 
   it(`captureViewHierarchy() - should receive "captureViewHierarchyDone" from device and resolve`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("captureViewHierarchyDone", {}, 1));
+    aws.send.mockReturnValueOnce(response("captureViewHierarchyDone", {}, 1));
 
     const viewHierarchyURL = tempfile('.viewhierarchy');
     await client.captureViewHierarchy({ viewHierarchyURL });
 
-    expect(client.ws.send).toHaveBeenCalledWith(expect.objectContaining({
+    expect(aws.send).toHaveBeenCalledWith(expect.objectContaining({
       type: 'captureViewHierarchy',
       params: expect.objectContaining({ viewHierarchyURL }),
     }), undefined);
@@ -115,7 +116,7 @@ describe('Client', () => {
 
   it(`captureViewHierarchy() - should throw an error if the response has "captureViewHierarchyError" in params`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("captureViewHierarchyDone", {
+    aws.send.mockReturnValueOnce(response("captureViewHierarchyDone", {
       captureViewHierarchyError: 'Test error to check',
     }, 1));
 
@@ -125,82 +126,82 @@ describe('Client', () => {
 
   it(`waitUntilReady() - should receive ready from device and resolve`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("ready", {}, 1));
+    aws.send.mockReturnValueOnce(response("ready", {}, 1));
     await client.waitUntilReady();
 
-    expect(client.ws.send).toHaveBeenCalledTimes(2);
+    expect(aws.send).toHaveBeenCalledTimes(2);
   });
 
   it(`waitForBackground() - should receive waitForBackgroundDone from device and resolve`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("waitForBackgroundDone", {}, 1));
+    aws.send.mockReturnValueOnce(response("waitForBackgroundDone", {}, 1));
     await client.waitForBackground();
 
-    expect(client.ws.send).toHaveBeenCalledTimes(2);
+    expect(aws.send).toHaveBeenCalledTimes(2);
   });
 
   it(`waitForActive() - should receive waitForActiveDone from device and resolve`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("waitForActiveDone", {}, 1));
+    aws.send.mockReturnValueOnce(response("waitForActiveDone", {}, 1));
     await client.waitForActive();
 
-    expect(client.ws.send).toHaveBeenCalledTimes(2);
+    expect(aws.send).toHaveBeenCalledTimes(2);
   });
 
   it(`cleanup() - if connected should send cleanup action and close websocket`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("ready", {}, 1));
+    aws.send.mockReturnValueOnce(response("ready", {}, 1));
     await client.waitUntilReady();
-    client.ws.send.mockReturnValueOnce(response("cleanupDone", {}, 2));
+    aws.send.mockReturnValueOnce(response("cleanupDone", {}, 2));
     await client.cleanup();
 
-    expect(client.ws.send).toHaveBeenCalledTimes(3);
+    expect(aws.send).toHaveBeenCalledTimes(3);
   });
 
   it(`cleanup() - if connected should accept appDisconnected action too`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("ready", {}, 1));
+    aws.send.mockReturnValueOnce(response("ready", {}, 1));
     await client.waitUntilReady();
-    client.ws.send.mockReturnValueOnce(response("appDisconnected", {}, 2));
+    aws.send.mockReturnValueOnce(response("appDisconnected", {}, 2));
     await client.cleanup();
 
-    expect(client.ws.send).toHaveBeenCalledTimes(3);
+    expect(aws.send).toHaveBeenCalledTimes(3);
   });
 
   it(`cleanup() - if not connected should do nothing`, async () => {
     client = new Client(sessionConfig);
-    client.ws.send.mockReturnValueOnce(response("cleanupDone", {}, 1));
+    aws.send.mockReturnValueOnce(response("cleanupDone", {}, 1));
     await client.cleanup();
 
-    expect(client.ws.send).not.toHaveBeenCalled();
+    expect(aws.send).not.toHaveBeenCalled();
   });
 
-  it(`cleanup() - if "connected" but ws is closed should do nothing`, async () => {
+  it(`cleanup() - if "connected" but aws is closed should do nothing`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("ready", {}, 1));
+    aws.send.mockReturnValueOnce(response("ready", {}, 1));
     await client.waitUntilReady();
 
-    client.ws.isOpen.mockReturnValue(false);
+    aws.isOpen.mockReturnValue(false);
     await client.cleanup();
 
-    expect(client.ws.send).toHaveBeenCalledTimes(2);
+    expect(aws.send).toHaveBeenCalledTimes(2);
   });
 
   it(`execute() - "invokeResult" on an invocation object should resolve`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("invokeResult", {result: "(GREYElementInteraction)"}, 1));
+    aws.send.mockReturnValueOnce(response("invokeResult", {result: "(GREYElementInteraction)"}, 1));
 
     const call = invoke.call(invoke.IOS.Class('GREYMatchers'), 'matcherForAccessibilityLabel:', 'test');
     await client.execute(call());
 
-    expect(client.ws.send).toHaveBeenCalledTimes(2);
+    expect(aws.send).toHaveBeenCalledTimes(2);
   });
 
   it(`execute() - "invokeResult" on an invocation object should return invokeResult`, async () => {
     const someResult = 'some_result';
     const someInvocationResult = { type: "invokeResult", params: { result: someResult }, messageId: 1 };
     await connect();
-    client.ws.send.mockReturnValueOnce(response("invokeResult", {result: someResult}, 1));
+    aws.send.mockReturnValueOnce(response("invokeResult", {result: someResult}, 1));
 
     const call = invoke.call(invoke.IOS.Class('GREYMatchers'), 'matcherForAccessibilityLabel:', 'test');
     const invokeResult = await client.execute(call());
@@ -217,25 +218,25 @@ describe('Client', () => {
       sessionConfig.debugSynchronization = 2;
       await connect();
       await executeWithSlowInvocation(1);
-      expect(client.ws.send).toHaveBeenLastCalledWith({"params": {"args": ["test"], "method": "matcherForAccessibilityLabel:", "target": {"type": "Class", "value": "GREYMatchers"}}, "type": "invoke"}, undefined);
-      expect(client.ws.send).toHaveBeenCalledTimes(2);
+      expect(aws.send).toHaveBeenLastCalledWith({"params": {"args": ["test"], "method": "matcherForAccessibilityLabel:", "target": {"type": "Class", "value": "GREYMatchers"}}, "type": "invoke"}, undefined);
+      expect(aws.send).toHaveBeenCalledTimes(2);
     });
 
     it(`execute() - slow invocation should trigger "slowInvocationStatus:`, async () => {
       sessionConfig.debugSynchronization = 2;
       await connect();
       await executeWithSlowInvocation(3);
-      expect(client.ws.send).toHaveBeenLastCalledWith({"params": {}, "type": "currentStatus"}, undefined);
-      expect(client.ws.send).toHaveBeenCalledTimes(3);
+      expect(aws.send).toHaveBeenLastCalledWith({"params": {}, "type": "currentStatus"}, undefined);
+      expect(aws.send).toHaveBeenCalledTimes(3);
     });
 
-    it(`execute() - slow invocation should do nothing if ws was closed`, async () => {
+    it(`execute() - slow invocation should do nothing if aws was closed`, async () => {
       sessionConfig.debugSynchronization = 2;
       await connect();
-      client.ws.isOpen.mockReturnValue(false);
+      aws.isOpen.mockReturnValue(false);
       await executeWithSlowInvocation(4);
 
-      expect(client.ws.send).toHaveBeenCalledTimes(2);
+      expect(aws.send).toHaveBeenCalledTimes(2);
     });
 
     // NOTE: this test prevents geometrical progression of currentStatus calls
@@ -251,7 +252,7 @@ describe('Client', () => {
     });
 
     async function executeWithSlowInvocation(invocationTime) {
-      client.ws.send
+      aws.send
         .mockImplementationOnce(async function () {
           await sleep(invocationTime);
           return response("invokeResult", {result:"(GREYElementInteraction)"}, 1);
@@ -275,83 +276,56 @@ describe('Client', () => {
 
   it(`execute() - "invokeResult" on an invocation function should resolve`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("invokeResult", {result: "(GREYElementInteraction)"}, 1));
+    aws.send.mockReturnValueOnce(response("invokeResult", {result: "(GREYElementInteraction)"}, 1));
 
     const call = invoke.call(invoke.IOS.Class('GREYMatchers'), 'matcherForAccessibilityLabel:', 'test');
     await client.execute(call);
 
-    expect(client.ws.send).toHaveBeenCalledTimes(2);
+    expect(aws.send).toHaveBeenCalledTimes(2);
   });
 
   it(`execute() - "testFailed" result should throw with view hierarchy`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("testFailed",  {details: "this is an error", viewHierarchy: 'mock-hierarchy'}, 1));
+    aws.send.mockReturnValueOnce(response("testFailed",  {details: "this is an error", viewHierarchy: 'mock-hierarchy'}, 1));
     const call = invoke.call(invoke.IOS.Class('GREYMatchers'), 'matcherForAccessibilityLabel:', 'test');
-    try {
-      await client.execute(call);
-    } catch (ex) {
-      expect(ex).toBeDefined();
-      expect(ex.toString()).toContain('View Hierarchy:\nmock-hierarchy');
-    }
+    await expect(client.execute(call)).rejects.toThrowError(/View Hierarchy:\nmock-hierarchy/);
   });
 
   it(`execute() - "testFailed" result should throw with view-hierarchy hint`, async () => {
     log.getDetoxLevel = () => 'info';
 
     await connect();
-    client.ws.send.mockReturnValueOnce(response("testFailed",  {details: "this is an error", viewHierarchy: 'mock-hierarchy'}, 1));
+    aws.send.mockReturnValueOnce(response("testFailed",  {details: "this is an error", viewHierarchy: 'mock-hierarchy'}, 1));
     const call = invoke.call(invoke.IOS.Class('GREYMatchers'), 'matcherForAccessibilityLabel:', 'test');
-    try {
-      await client.execute(call);
-    } catch (ex) {
-      expect(ex).toBeDefined();
-      expect(ex.toString()).toContain('use log-level verbose or higher');
-    }
+    await expect(client.execute(call)).rejects.toThrowError(/use log-level verbose or higher/);
   });
 
   it(`execute() - "testFailed" result should throw without a view hierarchy`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("testFailed",  {details: "this is an error", viewHierarchy: undefined}, 1));
+    aws.send.mockReturnValueOnce(response("testFailed",  {details: "this is an error", viewHierarchy: undefined}, 1));
     const call = invoke.call(invoke.IOS.Class('GREYMatchers'), 'matcherForAccessibilityLabel:', 'test');
-    try {
-      await client.execute(call);
-    } catch (ex) {
-      expect(ex).toBeDefined();
-      expect(ex.toString()).not.toContain('View Hierarchy:');
-    }
+    await expect(client.execute(call)).rejects.not.toThrowError(/View Hierarchy:/);
   });
 
   it(`execute() - "error" result should throw`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(response("error", {details: "this is an error"}), 1);
+    aws.send.mockReturnValueOnce(response("error", {details: "this is an error"}), 1);
     const call = invoke.call(invoke.IOS.Class('GREYMatchers'), 'matcherForAccessibilityLabel:', 'test');
-    try {
-      await client.execute(call);
-    } catch (ex) {
-      expect(ex).toBeDefined();
-    }
+    await expect(client.execute(call)).rejects.toThrowError();
   });
 
   it(`execute() - should throw if non-error is thrown`, async () => {
     await connect();
-    client.ws.send.mockRejectedValueOnce("non-error");
+    aws.send.mockRejectedValueOnce("non-error");
     const call = invoke.call(invoke.IOS.Class('GREYMatchers'), 'matcherForAccessibilityLabel:', 'test');
-    try {
-      await client.execute(call);
-    } catch (ex) {
-      expect(ex.message).toBe("non-error");
-    }
+    await expect(client.execute(call)).rejects.toThrowError('non-error');
   });
 
   it(`execute() - unsupported result should throw`, async () => {
     await connect();
-    client.ws.send.mockReturnValueOnce(Promise.resolve(`{"unsupported":"unsupported"}`));
+    aws.send.mockReturnValueOnce(Promise.resolve(`{"unsupported":"unsupported"}`));
     const call = invoke.call(invoke.IOS.Class('GREYMatchers'), 'matcherForAccessibilityLabel:', 'test');
-    try {
-      await client.execute(call);
-    } catch (ex) {
-      expect(ex).toBeDefined();
-    }
+    await expect(client.execute(call)).rejects.toThrowError();
   });
 
   it(`dumpPendingRequests() - should not dump if no pending requests`, async () => {
@@ -364,7 +338,7 @@ describe('Client', () => {
     await connect();
 
     const currentStatus = { message: new actions.CurrentStatus(), resolve: jest.fn(), reject: jest.fn() };
-    client.ws.inFlightPromises = {
+    aws.inFlightPromises = {
       [currentStatus.message.messageId]: currentStatus
     };
 
@@ -377,7 +351,7 @@ describe('Client', () => {
       await connect();
 
       const cleanup = { message: new actions.Cleanup(), resolve: jest.fn(), reject: jest.fn() };
-      client.ws.inFlightPromises = {
+      aws.inFlightPromises = {
         [cleanup.message.messageId]: cleanup
       };
     });
@@ -395,14 +369,14 @@ describe('Client', () => {
     });
 
     it(`should reset in flight promises`, async () => {
-      expect(client.ws.resetInFlightPromises).not.toHaveBeenCalled();
+      expect(aws.resetInFlightPromises).not.toHaveBeenCalled();
       client.dumpPendingRequests();
-      expect(client.ws.resetInFlightPromises).toHaveBeenCalled();
+      expect(aws.resetInFlightPromises).toHaveBeenCalled();
     });
   });
 
   it(`save a pending error if AppWillTerminateWithError event is sent to tester`, async () => {
-    client.ws.setEventCallback = jest.fn();
+    aws.setEventCallback = jest.fn();
     await connect();
 
     triggerAppWillTerminateWithError();
@@ -411,12 +385,12 @@ describe('Client', () => {
 
     function triggerAppWillTerminateWithError() {
       const event = createAppWillTerminateEvent();
-      client.ws.setEventCallback.mock.calls[0][1](event);
+      aws.setEventCallback.mock.calls[0][1](event);
     }
   });
 
   it(`should allow for a nonresponsiveness listener`, async () => {
-    client.ws.setEventCallback = jest.fn();
+    aws.setEventCallback = jest.fn();
     await connect();
 
     const callback = setNonresponsiveEventCallbackMock();
@@ -426,23 +400,23 @@ describe('Client', () => {
 
     function setNonresponsiveEventCallbackMock() {
       const callback = jest.fn();
-      client.ws.setEventCallback.mockReset();
+      aws.setEventCallback.mockReset();
       client.setNonresponsivenessListener(callback);
       return callback;
     }
 
     function triggerAppNonresponsiveEvent() {
       const event = createAppNonresponsiveEvent();
-      client.ws.setEventCallback.mock.calls[0][1](event);
+      aws.setEventCallback.mock.calls[0][1](event);
       return event;
     }
   });
 
   async function connect() {
     client = new Client(sessionConfig);
-    client.ws.send.mockReturnValueOnce(response("loginSuccess", {}, 1));
+    aws.send.mockReturnValueOnce(response("loginSuccess", {}, 1));
     await client.connect();
-    client.ws.isOpen.mockReturnValue(true);
+    aws.isOpen.mockReturnValue(true);
   }
 
   function response(type, params, messageId) {

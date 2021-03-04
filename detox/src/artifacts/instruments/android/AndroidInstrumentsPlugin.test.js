@@ -11,7 +11,6 @@ describe('AndroidInstrumentsPlugin', () => {
     };
     const mockedClient = {
       isConnected: true,
-      pandingAppCrash: false,
       startInstrumentsRecording: jest.fn(),
     };
     const mockedDevicePathBuilder = {

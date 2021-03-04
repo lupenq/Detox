@@ -1,6 +1,5 @@
 const _ = require('lodash');
-const logger = require('../../utils/logger');
-const log = logger.child({ __filename });
+const { getDetoxLevel } = require('../../utils/logger');
 const DetoxRuntimeError = require('../../errors/DetoxRuntimeError');
 
 class Action {
@@ -34,6 +33,17 @@ class Login extends Action {
 class Ready extends Action {
   constructor() {
     super('isReady');
+    this.messageId = -1000;
+  }
+
+  async handle(response) {
+    this.expectResponseOfType(response, 'ready');
+  }
+}
+
+class ReloadReactNative extends Action {
+  constructor() {
+    super('reactNativeReload');
     this.messageId = -1000;
   }
 
@@ -82,17 +92,6 @@ class SetOrientation extends Action {
   }
 }
 
-class ReloadReactNative extends Action {
-  constructor() {
-    super('reactNativeReload');
-    this.messageId = -1000;
-  }
-
-  async handle(response) {
-    this.expectResponseOfType(response, 'ready');
-  }
-}
-
 class Cleanup extends Action {
   constructor(stopRunner) {
     super('cleanup', { stopRunner });
@@ -117,7 +116,7 @@ class Invoke extends Action {
         let message = 'Test Failed: ' + response.params.details;
         if (response.params.viewHierarchy) {
           /* istanbul ignore next */
-          message += /^(debug|trace)$/.test(logger.getDetoxLevel())
+          message += /^(debug|trace)$/.test(getDetoxLevel())
             ? '\nView Hierarchy:\n' + response.params.viewHierarchy
             : '\nTIP: To print view hierarchy on failed actions/matches, use log-level verbose or higher.';
         }

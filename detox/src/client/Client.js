@@ -9,57 +9,75 @@ const log = require('../utils/logger').child({ __filename });
 const { asError, createErrorWithUserStack, replaceErrorStack } = require('../utils/errorUtils');
 
 class Client {
-  constructor(config) {
-    this._whenConnected = new Deferred();
-    this._whenReady = new Deferred();
-    this.configuration = config;
-    this._slowInvocationStatusHandle = null;
-    this._slowInvocationTimeout = config.debugSynchronization;
-    this.successfulTestRun = true; // flag for cleanup
-    this.pandingAppCrash = undefined;
-    this.ws = new AsyncWebSocket(config.server);
+  /**
+   * @param {number} debugSynchronization
+   * @param {string} server
+   * @param {string} sessionId
+   */
+  constructor({ debugSynchronization, server, sessionId  }) {
+    this._onAppConnected = this._onAppConnected.bind(this);
+    this._onAppReady = this._onAppReady.bind(this);
+    this._onAppUnresponsive = this._onAppUnresponsive.bind(this);
+    this._onBeforeAppCrash = this._onBeforeAppCrash.bind(this);
+    this._onAppDisconnected = this._onAppDisconnected.bind(this);
+    this._onUnhandledServerError = this._onUnhandledServerError.bind(this);
 
-    this.setEventCallback('appDisconnected', () => {
-      this._whenConnected = new Deferred();
-      this._whenReady = new Deferred();
-      this.ws.rejectAll(new Error('The app has unexpectedly disconnected from Detox server'));
-    });
-    this.setEventCallback('appConnected', () => {
-      this._whenConnected.resolve();
-    });
-    this.setEventCallback('ready', () => {
-      this._whenReady.resolve();
-    });
-    this.setEventCallback('error', this._onUnhandledErrorFromServer.bind(this));
-    this.setEventCallback('AppNonresponsiveDetected', this._onNonresnponsivenessEvent.bind(this));
-    this.setEventCallback('AppWillTerminateWithError', ({ params }) => {
-      this.pandingAppCrash = params.errorDetails;
-      this.ws.rejectAll(this.pandingAppCrash);
-    });
+    this._sessionId = sessionId;
+    this._slowInvocationTimeout = debugSynchronization;
+    this._slowInvocationStatusHandle = null;
+    this._whenAppIsConnected = new Deferred();
+    this._whenAppIsReady = new Deferred();
+
+    this._successfulTestRun = true; // flag for cleanup
+    this._pendingAppCrash = undefined;
+    this._asyncWebSocket = new AsyncWebSocket(server);
+
+    this.setEventCallback('appConnected', this._onAppConnected);
+    this.setEventCallback('ready', this._onAppReady);
+    this.setEventCallback('AppNonresponsiveDetected', this._onAppUnresponsive);
+    this.setEventCallback('AppWillTerminateWithError', this._onBeforeAppCrash);
+    this.setEventCallback('appDisconnected', this._onAppDisconnected);
+    this.setEventCallback('error', this._onUnhandledServerError);
   }
 
   get isConnected() {
-    return this.ws.isOpen() && this._whenConnected.isResolved();
+    return this._asyncWebSocket.isOpen && this._whenAppIsConnected.isResolved();
   }
 
   async connect() {
-    await this.ws.open();
-    await this.sendAction(new actions.Login(this.configuration.sessionId));
+    await this._asyncWebSocket.open();
+    await this.sendAction(new actions.Login(this._sessionId));
+  }
+
+  async cleanup() {
+    clearTimeout(this._slowInvocationStatusHandle);
+
+    if (this.isConnected && !this._pendingAppCrash) {
+      if (this._asyncWebSocket.isOpen) {
+        await this.sendAction(new actions.Cleanup(this._successfulTestRun));
+      }
+
+      this._whenAppIsConnected = new Deferred();
+    }
+
+    if (this._asyncWebSocket.isOpen) {
+      await this._asyncWebSocket.close();
+    }
   }
 
   async reloadReactNative() {
-    this._whenReady = new Deferred();
+    this._whenAppIsReady = new Deferred();
     await this.sendAction(new actions.ReloadReactNative());
   }
 
   async waitUntilReady() {
-    await this._whenConnected.promise;
+    await this._whenAppIsConnected.promise;
 
     // TODO: optimize traffic (!) - we can just listen for 'ready' event
     // if app always sends it upon load completion. Then this will suffice:
-    // await this._whenReady.promise;
+    // await this._whenAppIsReady.promise;
 
-    if (!this._whenReady.isResolved()) {
+    if (!this._whenAppIsReady.isResolved()) {
       await this.sendAction(new actions.Ready());
     }
   }
@@ -76,20 +94,6 @@ class Client {
     return await this.sendAction(new actions.CaptureViewHierarchy({
       viewHierarchyURL
     }));
-  }
-
-  async cleanup() {
-    clearTimeout(this._slowInvocationStatusHandle);
-    if (this.isConnected && !this.pandingAppCrash) {
-      if(this.ws.isOpen()) {
-        await this.sendAction(new actions.Cleanup(this.successfulTestRun));
-      }
-      this._whenConnected = new Deferred();
-    }
-
-    if (this.ws.isOpen()) {
-      await this.ws.close();
-    }
   }
 
   async currentStatus() {
@@ -130,18 +134,21 @@ class Client {
     try {
       return await this.sendAction(new actions.Invoke(invocation));
     } catch (err) {
-      this.successfulTestRun = false;
+      this._successfulTestRun = false;
       throw err;
     }
   }
 
   getPendingCrashAndReset() {
-    const crash = this.pandingAppCrash;
-    this.pandingAppCrash = undefined;
+    const crash = this._pendingAppCrash;
+    this._pendingAppCrash = undefined;
 
     return crash;
   }
 
+  /**
+   * @protected
+   */
   async sendAction(action) {
     const errorWithUserStack = createErrorWithUserStack();
 
@@ -160,7 +167,7 @@ class Client {
     }
 
     try {
-      const response = await this.ws.send(action, action.messageId);
+      const response = await this._asyncWebSocket.send(action, action.messageId);
       const parsedResponse = JSON.parse(response);
       if (parsedResponse && parsedResponse.type === 'error') {
         throw deserializeError(parsedResponse.params.error);
@@ -175,7 +182,7 @@ class Client {
   }
 
   setEventCallback(event, callback) {
-    this.ws.setEventCallback(event, callback);
+    this._asyncWebSocket.setEventCallback(event, callback);
   }
 
   _scheduleSlowInvocationQuery() {
@@ -188,7 +195,7 @@ class Client {
   }
 
   dumpPendingRequests({testName} = {}) {
-    const messages = _.values(this.ws.inFlightPromises)
+    const messages = _.values(this._asyncWebSocket.inFlightPromises)
       .map(p => p.message)
       .filter(m => m.type !== 'currentStatus');
 
@@ -208,19 +215,18 @@ class Client {
     dump += `\n\n${notice}\n`;
 
     log.warn({ event: 'PENDING_REQUESTS'}, dump);
-    this.ws.resetInFlightPromises();
+    this._asyncWebSocket.resetInFlightPromises();
   }
 
-  _onUnhandledErrorFromServer(result) {
-    if (!result || !result.params || !result.params.error) {
-      const err = new DetoxInvariantError('Received an empty error message from Detox Server:\n' + util.inspect(result));
-      log.error({ event: 'ERROR' }, err.toString());
-    } else {
-      log.error({ event: 'ERROR' }, result.params.error);
-    }
+  _onAppConnected() {
+    this._whenAppIsConnected.resolve();
   }
 
-  _onNonresnponsivenessEvent({ params }) {
+  _onAppReady() {
+    this._whenAppIsReady.resolve();
+  }
+
+  _onAppUnresponsive({ params }) {
     const message = [
       'Application nonresponsiveness detected!',
       'On Android, this could imply an ANR alert, which evidently causes tests to fail.',
@@ -230,6 +236,28 @@ class Client {
     ].join('\n');
 
     log.warn({ event: 'APP_NONRESPONSIVE' }, message);
+  }
+
+  _onBeforeAppCrash({ params }) {
+    this._pendingAppCrash = params.errorDetails;
+    this._asyncWebSocket.rejectAll(this._pendingAppCrash);
+    this._whenAppIsConnected = new Deferred();
+    this._whenAppIsReady = new Deferred();
+  }
+
+  _onAppDisconnected() {
+    this._whenAppIsConnected = new Deferred();
+    this._whenAppIsReady = new Deferred();
+    this._asyncWebSocket.rejectAll(new Error('The app has unexpectedly disconnected from Detox server'));
+  }
+
+  _onUnhandledServerError({ params }) {
+    if (!params || !params.error) {
+      const err = new DetoxInvariantError('Received an empty error message from Detox Server:\n' + util.inspect(result));
+      log.error({ event: 'ERROR' }, err.toString());
+    } else {
+      log.error({ event: 'ERROR' }, params.error);
+    }
   }
 }
 
