@@ -65,9 +65,7 @@ class Client {
       this._whenAppIsReady = new Deferred();
     }
 
-    if (this._asyncWebSocket.isOpen) {
-      await this._asyncWebSocket.close();
-    }
+    await this._asyncWebSocket.close();
   }
 
   setEventCallback(event, callback) {
@@ -138,8 +136,7 @@ class Client {
     const errorWithUserStack = createErrorWithUserStack();
 
     try {
-      const response = await this._asyncWebSocket.send(action, action.messageId);
-      const parsedResponse = JSON.parse(response);
+      const parsedResponse = await this._asyncWebSocket.send(action);
       if (parsedResponse && parsedResponse.type === 'error') {
         throw deserializeError(parsedResponse.params.error);
       }

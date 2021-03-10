@@ -36,7 +36,7 @@ describe('Client', () => {
     };
 
     mockAws.mockResponse = (type, params) => {
-      mockAws.send.mockResolvedValueOnce(JSON.stringify({ type, params }));
+      mockAws.send.mockResolvedValueOnce({ type, params });
     };
 
     mockAws.mockSyncError = (message) => {
@@ -103,7 +103,7 @@ describe('Client', () => {
       mockAws.mockResponse('loginSuccess');
       expect(mockAws.send).not.toHaveBeenCalled();
       await client.connect();
-      expect(mockAws.send).toHaveBeenCalledWith(new actions.Login(validSession.sessionId), undefined);
+      expect(mockAws.send).toHaveBeenCalledWith(new actions.Login(validSession.sessionId));
     })
 
     it('should not schedule "currentStatus" query for the "login" action', async () => {
@@ -119,14 +119,14 @@ describe('Client', () => {
 
     it('should schedule "currentStatus" query when it takes too long', async () => {
       const { someAction } = await simulateInFlightAction();
-      expect(mockAws.send).toHaveBeenCalledWith(someAction, undefined);
+      expect(mockAws.send).toHaveBeenCalledWith(someAction);
       expect(mockAws.send).toHaveBeenCalledTimes(1);
 
       mockAws.mockBusy();
       jest.advanceTimersByTime(validSession.debugSynchronization);
       await simulateManyPromisesDone();
 
-      expect(mockAws.send).toHaveBeenCalledWith(new actions.CurrentStatus(), undefined);
+      expect(mockAws.send).toHaveBeenCalledWith(new actions.CurrentStatus());
       expect(jest.getTimerCount()).toBe(0); // should not spam with "currentStatus" queries
     });
 
@@ -194,7 +194,7 @@ describe('Client', () => {
 
       mockAws.mockResponse('whateverDone');
       await client.sendAction(someAction);
-      expect(mockAws.send).toHaveBeenCalledWith(someAction, 100500);
+      expect(mockAws.send).toHaveBeenCalledWith(someAction);
     });
 
     it('should pass the parsed response to action.handle()', async () => {
@@ -242,7 +242,7 @@ describe('Client', () => {
         await client[methodName](params);
 
         const action = new Action(params);
-        expect(mockAws.send).toHaveBeenCalledWith(action, action.messageId);
+        expect(mockAws.send).toHaveBeenCalledWith(action);
       });
 
       it(`should throw on a wrong response from device`, async () => {
