@@ -2,10 +2,12 @@ const _ = require('lodash');
 const argv = require('minimist')(process.argv.slice(2));
 const {escape} = require('./pipeCommands');
 
-function getArgValue(key, alias) {
-  let value = _getArgvValue(key, alias);
+function getArgValue(key) {
+  let value;
 
-  if (value === undefined) {
+  if (argv && argv[key]) {
+    value = argv[key];
+  } else {
     const envKey = _.findKey(process.env, matchesKey(
       `DETOX_${_.snakeCase(key)}`.toUpperCase()
     ));
@@ -17,18 +19,6 @@ function getArgValue(key, alias) {
   }
 
   return value;
-}
-
-function _getArgvValue(...aliases) {
-  if (!argv) {
-    return;
-  }
-
-  for (const alias of aliases) {
-    if (alias && argv[alias]) {
-      return argv[alias];
-    }
-  }
 }
 
 function matchesKey(key) {

@@ -73,7 +73,7 @@ function createPlainBunyanStream({ logPath, level }) {
 }
 
 function init() {
-  const levelFromArg = argparse.getArgValue('loglevel', 'l');
+  const levelFromArg = argparse.getArgValue('loglevel');
   const level = adaptLogLevelName(levelFromArg);
   const bunyanStreams = [createPlainBunyanStream({ level })];
 
