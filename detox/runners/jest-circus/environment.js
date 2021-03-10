@@ -71,7 +71,7 @@ class DetoxCircusEnvironment extends NodeEnvironment {
           try {
             await this._timer.run(() => listener[name](event, state));
           } catch (listenerError) {
-            this._logError(listenerError);
+            this._logger.error(`${listenerError}`);
           }
         }
       }
@@ -104,7 +104,7 @@ class DetoxCircusEnvironment extends NodeEnvironment {
           return await this.initDetox();
         } catch (actualError) {
           state.unhandledErrors.push(actualError);
-          this._logError(actualError);
+          this._logger.error(`${actualError}`);
           throw actualError;
         }
       });
@@ -112,7 +112,7 @@ class DetoxCircusEnvironment extends NodeEnvironment {
       if (!state.unhandledErrors.includes(maybeActualError)) {
         const timeoutError = maybeActualError;
         state.unhandledErrors.push(timeoutError);
-        this._logError(timeoutError);
+        this._logger.error(`${timeoutError}`);
       }
 
       detox = wrapErrorWithNoopLifecycle(maybeActualError);
@@ -137,22 +137,13 @@ class DetoxCircusEnvironment extends NodeEnvironment {
       await this._timer.run(() => this.cleanupDetox());
     } catch (cleanupError) {
       state.unhandledErrors.push(cleanupError);
-      this._logError(cleanupError);
+      this._logger.error(`${cleanupError}`);
     }
   }
 
   /** @private */
   get _logger() {
     return require('../../src/utils/logger');
-  }
-
-  /** @private */
-  _logError(e) {
-    if (e instanceof Error) {
-      this._logger.error(e.stack || e.message || `${e}`);
-    } else {
-      this._logger.error('%j', e);
-    }
   }
 
   /** @protected */
