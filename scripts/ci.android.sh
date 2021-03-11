@@ -10,10 +10,12 @@ run_f "npm run integration"
 popd
 
 pushd detox/android
-run_f "./gradlew test"
+run_f "./gradlew testFullRelease"
 popd
 
 mkdir -p coverage
+
+run_f "scripts/ci.genycloud-login.sh"
 
 pushd detox/test
 
